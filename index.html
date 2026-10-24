@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>우리들의 이야기</title>
+    
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Load html2canvas for saving as image -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <!-- Load FontAwesome and Google Fonts -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { 
+            font-family: 'Noto Sans KR', sans-serif; 
+            background-color: #fefcf5; /* Soft, warm paper-like background */
+            color: #333; 
+            overflow: hidden; /* Prevent scrolling to keep drag robust */
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        
+        .title-font { font-family: 'Jua', sans-serif; }
+        
+        /* Panel Grid System */
+        #panel-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 12px;
+            /* 가로로 너무 퍼지지 않고, 화면 높이에 맞춰 예쁜 정사각형 비율(1:1) 유지 */
+            width: min(100%, calc(100vh - 160px));
+            max-width: 800px;
+            aspect-ratio: 1 / 1;
+            padding: 10px;
+            margin: auto; /* 화면 정중앙에 완벽하게 정렬 */
+        }
+
+        @media (min-width: 768px) {
+            #panel-grid { gap: 16px; padding: 16px; }
+        }
+
+        .panel-container { 
+            position: relative; 
+            background-color: #ffffff; 
+            border: 3px dashed #cbd5e1; 
+            border-radius: 1rem; 
+            width: 100%; 
+            height: 100%; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            overflow: hidden;
+            transition: all 0.3s ease; 
+            cursor: pointer;
+            box-shadow: inset 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        
+        .panel-container:hover {
+            border-color: #94a3b8;
+            background-color: #f8fafc;
+        }
+
+        /* 그림 크기에 따라 잘리지 않고 온전히 다 보이도록(contain) 수정 */
+        .panel-container.has-image { 
+            border: 3px solid #bfdbfe; 
+            background-size: contain; 
+            background-position: center; 
+            background-repeat: no-repeat; 
+            background-color: #ffffff;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        }
+        
+        .panel-container.has-image.active { 
+            border-color: #10b981; 
+            border-width: 4px; 
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); 
+        }
+
+        .panel-delete { 
+            position: absolute; 
+            top: 8px; 
+            right: 8px; 
+            background: #ef4444; 
+            color: white; 
+            border-radius: 50%; 
+            width: 32px; 
+            height: 32px; 
+            display: none; 
+            align-items: center; 
+            justify-content: center; 
+            cursor: pointer;
+            z-index: 40; 
+            font-size: 14px; 
+            border: 2px solid white; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        @media (min-width: 768px) {
+            .panel-delete { width: 40px; height: 40px; font-size: 18px; top: 12px; right: 12px; }
+        }
+
+        .panel-delete:hover { transform: scale(1.15) rotate(5deg); background: #dc2626; }
+        .panel-container.has-image.active .panel-delete { display: flex; }
+
+        .speech-bubble { 
+            --bubble-border: #facc15;
+            --bubble-bg: rgba(255, 255, 255, 0.95);
+            position: absolute; 
+            background: var(--bubble-bg); 
+            border: 3px solid var(--bubble-border); 
+            border-radius: 24px; 
+            padding: 16px; 
+            min-width: 120px; 
+            width: max-content;
+            cursor: move; 
+            z-index: 50; 
+            touch-action: none; 
+            box-shadow: 0 6px 16px rgba(0,0,0,0.12); 
+            user-select: none; 
+            transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+        }
+
+        .speech-bubble::after {
+            content: ''; position: absolute; bottom: -14px; left: 24px;
+            border-width: 14px 14px 0 0; border-style: solid;
+            border-color: var(--bubble-border) transparent transparent transparent;
+            display: block; width: 0; pointer-events: none;
+            transition: border-color 0.2s;
+        }
+        .speech-bubble::before {
+            content: ''; position: absolute; bottom: -9px; left: 28px;
+            border-width: 9px 9px 0 0; border-style: solid;
+            border-color: var(--bubble-bg) transparent transparent transparent;
+            display: block; width: 0; z-index: 1; pointer-events: none;
+            transition: border-color 0.2s;
+        }
+
+        .speech-bubble.active { 
+            --bubble-border: #ef4444; 
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); 
+            z-index: 55;
+        } 
+        
+        .speech-bubble.recording { 
+            --bubble-border: #10b981 !important; 
+            --bubble-bg: rgba(240, 253, 244, 0.98) !important;
+            animation: pulse-border-green 1.5s infinite; 
+        }
+
+        @keyframes pulse-border-green { 
+            0%, 100% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); } 
+            50% { box-shadow: 0 0 5px rgba(16, 185, 129, 0.2); } 
+        }
+
+        .bubble-status {
+            font-size: 0.65rem;
+            color: #ef4444; 
+            text-align: center;
+            margin-bottom: 4px;
+            font-family: 'Noto Sans KR', sans-serif;
+            pointer-events: none;
+            user-select: none;
+            font-weight: 500;
+        }
+        .speech-bubble.recording .bubble-status {
+            color: #10b981; 
+            font-weight: bold;
+        }
+        .speech-bubble:not(.active):not(.recording) .bubble-status {
+            display: none; 
+        }
+
+        .bubble-text { 
+            outline: none; 
+            font-family: 'Jua', sans-serif; 
+            color: #1e3a8a; 
+            cursor: text; 
+            font-size: 2.1rem; 
+            min-height: 20px; 
+            text-align: center; 
+            word-break: break-all;
+            white-space: pre-wrap;
+            max-width: 15em; 
+            line-height: 1.1; 
+        }
+        .bubble-text:empty::before {
+            content: '내용을 입력하세요';
+            color: #94a3b8;
+        }
+
+        .bubble-action-btn {
+            position: absolute; 
+            color: white; 
+            border-radius: 50%; 
+            width: 32px; 
+            height: 32px; 
+            display: none; 
+            align-items: center; 
+            justify-content: center; 
+            cursor: pointer;
+            z-index: 60; 
+            border: 2px solid white; 
+            box-shadow: 0 3px 6px rgba(0,0,0,0.25);
+            transition: transform 0.15s ease;
+            font-size: 13px;
+        }
+        
+        .bubble-delete { top: -12px; right: -12px; background: #ef4444; }
+        .bubble-delete:hover { transform: scale(1.15); background: #dc2626; }
+        .speech-bubble.active .bubble-delete { display: flex; }
+
+        .delete-mode .panel-container.has-image { border-color: #fca5a5 !important; border-width: 4px; box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
+        .delete-mode .panel-container.has-image .panel-delete { display: flex !important; }
+        .delete-mode .speech-bubble { --bubble-border: #fca5a5 !important; box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
+        .delete-mode .speech-bubble .bubble-delete { display: flex !important; }
+
+        .countdown-text {
+            font-family: 'Jua', sans-serif;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body class="p-2 md:p-4 h-screen flex flex-col" id="capture-area">
+
+    <header class="flex-none text-center mb-2 md:mb-4 bg-white p-3 md:p-4 rounded-2xl shadow-sm border-b-4 border-blue-100 flex flex-col md:flex-row justify-between items-center px-4 md:px-8 no-capture gap-3 md:gap-0 z-30 relative">
+        <h1 class="text-2xl md:text-3xl font-bold text-blue-600 title-font flex items-center drop-shadow-sm">
+            <i class="fas fa-book-open text-yellow-400 mr-3 text-3xl"></i>우리들의 이야기
+        </h1>
+        
+        <div class="flex flex-wrap justify-center gap-2 md:gap-3">
+            <div id="normal-header-buttons" class="flex flex-wrap justify-center gap-2 md:gap-3">
+                <button type="button" onclick="showResetModal()" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 md:py-2.5 px-4 md:px-6 rounded-full shadow-md transition-transform hover:-translate-y-1 active:translate-y-0 flex items-center text-sm md:text-base">
+                    <i class="fas fa-redo mr-2"></i>다시하기
+                </button>
+                <button type="button" onclick="saveAsImage(this)" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 md:py-2.5 px-4 md:px-6 rounded-full shadow-md transition-transform hover:-translate-y-1 active:translate-y-0 flex items-center text-sm md:text-base">
+                    <i class="fas fa-download mr-2"></i>저장하기
+                </button>
+                <button type="button" onclick="addGlobalBubble()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 md:py-2.5 px-4 md:px-6 rounded-full shadow-md transition-transform hover:-translate-y-1 active:translate-y-0 flex items-center text-sm md:text-base">
+                    <i class="fas fa-comment-dots mr-2 text-lg"></i>말풍선 추가
+                </button>
+            </div>
+
+            <div id="delete-mode-header-buttons" class="hidden flex flex-wrap justify-center gap-2 items-center">
+                <span class="text-xs md:text-sm text-red-600 font-bold flex items-center mr-2 animate-pulse bg-red-50 px-3 md:px-4 py-2 rounded-full border border-red-200 shadow-inner">
+                    <i class="fas fa-exclamation-circle mr-2"></i>지울 항목의 쓰레기통을 누르세요
+                </span>
+                <button type="button" onclick="endSelectiveDelete()" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 md:py-2.5 px-4 md:px-6 rounded-full shadow-md transition-transform hover:-translate-y-1 active:translate-y-0 flex items-center text-sm md:text-base">
+                    <i class="fas fa-check mr-2"></i>지우기 완료
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow flex items-center justify-center overflow-hidden relative">
+        <div id="panel-grid">
+            
+            <!-- Panel 1 -->
+            <div class="relative w-full h-full">
+                <div class="panel-container group" id="panel-1" onclick="handlePanelClick('panel-1')">
+                    <div class="flex flex-col items-center justify-center text-gray-300 group-hover:text-blue-300 transition-colors">
+                        <i class="fas fa-plus-circle text-4xl md:text-6xl mb-2 md:mb-3"></i>
+                        <p class="font-bold text-base md:text-xl title-font">1컷 추가</p>
+                    </div>
+                </div>
+                <input type="file" id="file-1" class="hidden" accept="image/*" onchange="loadImage(event, 'panel-1')">
+            </div>
+
+            <!-- Panel 2 -->
+            <div class="relative w-full h-full">
+                <div class="panel-container group" id="panel-2" onclick="handlePanelClick('panel-2')">
+                    <div class="flex flex-col items-center justify-center text-gray-300 group-hover:text-blue-300 transition-colors">
+                        <i class="fas fa-plus-circle text-4xl md:text-6xl mb-2 md:mb-3"></i>
+                        <p class="font-bold text-base md:text-xl title-font">2컷 추가</p>
+                    </div>
+                </div>
+                <input type="file" id="file-2" class="hidden" accept="image/*" onchange="loadImage(event, 'panel-2')">
+            </div>
+
+            <!-- Panel 3 -->
+            <div class="relative w-full h-full">
+                <div class="panel-container group" id="panel-3" onclick="handlePanelClick('panel-3')">
+                    <div class="flex flex-col items-center justify-center text-gray-300 group-hover:text-blue-300 transition-colors">
+                        <i class="fas fa-plus-circle text-4xl md:text-6xl mb-2 md:mb-3"></i>
+                        <p class="font-bold text-base md:text-xl title-font">3컷 추가</p>
+                    </div>
+                </div>
+                <input type="file" id="file-3" class="hidden" accept="image/*" onchange="loadImage(event, 'panel-3')">
+            </div>
+
+            <!-- Panel 4 -->
+            <div class="relative w-full h-full">
+                <div class="panel-container group" id="panel-4" onclick="handlePanelClick('panel-4')">
+                    <div class="flex flex-col items-center justify-center text-gray-300 group-hover:text-blue-300 transition-colors">
+                        <i class="fas fa-plus-circle text-4xl md:text-6xl mb-2 md:mb-3"></i>
+                        <p class="font-bold text-base md:text-xl title-font">4컷 추가</p>
+                    </div>
+                </div>
+                <input type="file" id="file-4" class="hidden" accept="image/*" onchange="loadImage(event, 'panel-4')">
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Source Selection Modal -->
+    <div id="source-modal" class="hidden fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-[110] no-capture transition-opacity duration-300 opacity-0">
+        <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-2xl max-w-sm w-full mx-4 text-center border-4 border-blue-100 transform scale-95 transition-transform duration-300" id="source-modal-content">
+            <h3 class="text-2xl font-bold text-gray-800 title-font mb-6" id="source-modal-title">어떻게 사진을 추가할까요?</h3>
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <button type="button" onclick="openCamera()" class="py-6 px-2 bg-blue-500 text-white font-bold rounded-2xl hover:bg-blue-600 transition-all shadow-sm hover:shadow-md flex flex-col items-center justify-center gap-3 group">
+                    <i class="fas fa-camera text-4xl group-hover:scale-110 transition-transform"></i> 사진 찍기
+                </button>
+                <button type="button" onclick="triggerUpload()" class="py-6 px-2 bg-green-500 text-white font-bold rounded-2xl hover:bg-green-600 transition-all shadow-sm hover:shadow-md flex flex-col items-center justify-center gap-3 group">
+                    <i class="fas fa-file-image text-4xl group-hover:scale-110 transition-transform"></i> 업로드
+                </button>
+            </div>
+            <button type="button" onclick="closeSourceModal()" class="w-full py-3.5 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition-colors text-base">
+                취소
+            </button>
+        </div>
+    </div>
+
+    <!-- Camera Interface Modal -->
+    <div id="camera-modal" class="hidden fixed inset-0 bg-black flex flex-col items-center justify-center z-[120] no-capture">
+        <video id="camera-preview" class="w-full h-full object-contain" autoplay playsinline></video>
+        
+        <div id="countdown-display" class="absolute inset-0 flex items-center justify-center text-[8rem] md:text-[10rem] text-white countdown-text font-bold hidden pointer-events-none">
+            5
+        </div>
+        
+        <button type="button" onclick="closeCamera()" class="absolute bottom-10 bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-full shadow-lg transition-transform hover:-translate-y-1 z-20 flex items-center">
+            <i class="fas fa-times mr-2"></i>취소하기
+        </button>
+    </div>
+
+    <!-- Reset Modal -->
+    <div id="reset-modal" class="hidden fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-[100] no-capture transition-opacity duration-300 opacity-0">
+        <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-2xl max-w-md w-full mx-4 text-center border-4 border-blue-100 transform scale-95 transition-transform duration-300" id="reset-modal-content">
+            <div class="text-blue-500 text-5xl mb-4">
+                <i class="fas fa-magic animate-bounce"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-800 title-font mb-2">어떻게 정리할까요?</h3>
+            <p class="text-gray-500 mb-6 font-medium text-sm md:text-base">원하는 지우기 방식을 선택해 주세요.</p>
+            
+            <div class="grid grid-cols-2 gap-3 md:gap-4 mb-6">
+                <button type="button" onclick="clearBubblesOnly()" class="py-4 px-2 bg-blue-500 text-white font-bold rounded-2xl hover:bg-blue-600 transition-all shadow-sm hover:shadow-md flex flex-col items-center justify-center gap-2 text-sm md:text-base group">
+                    <i class="fas fa-comment-slash text-2xl group-hover:scale-110 transition-transform"></i> 말풍선만 지우기
+                </button>
+                <button type="button" onclick="clearPanelsOnly()" class="py-4 px-2 bg-teal-500 text-white font-bold rounded-2xl hover:bg-teal-600 transition-all shadow-sm hover:shadow-md flex flex-col items-center justify-center gap-2 text-sm md:text-base group">
+                    <i class="fas fa-images text-2xl group-hover:scale-110 transition-transform"></i> 사진 모두 지우기
+                </button>
+                <button type="button" onclick="executeReset()" class="py-4 px-2 bg-red-500 text-white font-bold rounded-2xl hover:bg-red-600 transition-all shadow-sm hover:shadow-md flex flex-col items-center justify-center gap-2 text-sm md:text-base group">
+                    <i class="fas fa-trash-alt text-2xl group-hover:scale-110 transition-transform"></i> 전부 지우기
+                </button>
+                <button type="button" onclick="startSelectiveDelete()" class="py-4 px-2 bg-yellow-400 text-yellow-900 font-bold rounded-2xl hover:bg-yellow-500 transition-all shadow-sm hover:shadow-md flex flex-col items-center justify-center gap-2 text-sm md:text-base group">
+                    <i class="fas fa-hand-pointer text-2xl group-hover:scale-110 transition-transform"></i> 골라서 지우기
+                </button>
+            </div>
+            
+            <button type="button" onclick="closeResetModal()" class="w-full py-3.5 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition-colors text-base">
+                취소
+            </button>
+        </div>
+    </div>
+
+    <!-- Camera Interface Modal -->
+    <div id="camera-modal" class="hidden fixed inset-0 bg-black flex flex-col items-center justify-center z-[120] no-capture">
+        <video id="camera-preview" class="w-full h-full object-contain" autoplay playsinline></video>
+        
+        <div id="countdown-display" class="absolute inset-0 flex items-center justify-center text-[8rem] md:text-[10rem] text-white countdown-text font-bold hidden pointer-events-none">
+            5
+        </div>
+        
+        <button onclick="closeCamera()" class="absolute bottom-10 bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-full shadow-lg transition-transform hover:-translate-y-1 z-20 flex items-center">
+            <i class="fas fa-times mr-2"></i>취소하기
+        </button>
+    </div>
+
+    <!-- Reset Modal -->
+    <div id="reset-modal" class="hidden fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-[100] no-capture transition-opacity duration-300 opacity-0">
+        <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-2xl max-w-md w-full mx-4 text-center border-4 border-blue-100 transform scale-95 transition-transform duration-300" id="reset-modal-content">
+            <div class="text-blue-500 text-5xl mb-4">
+                <i class="fas fa-magic animate-bounce"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-800 title-font mb-2">어떻게 정리할까요?</h3>
+            <p class="text-gray-500 mb-6 font-medium text-sm md:text-base">원하는 지우기 방식을 선택해 주세요.</p>
+            
+            <div class="grid grid-cols-2 gap-3 md:gap-4 mb-6">
+                <button onclick="clearBubblesOnly()" class="py-4 px-2 bg-blue-500 text-white font-bold rounded-2xl hover:bg-blue-600 transition-all shadow-sm hover:shadow-md flex flex-col items-center justify-center gap-2 text-sm md:text-base group">
+                    <i class="fas fa-comment-slash text-2xl group-hover:scale-110 transition-transform"></i> 말풍선만 지우기
+                </button>
+                <button onclick="clearPanelsOnly()" class="py-4 px-2 bg-teal-500 text-white font-bold rounded-2xl hover:bg-teal-600 transition-all shadow-sm hover:shadow-md flex flex-col items-center justify-center gap-2 text-sm md:text-base group">
+                    <i class="fas fa-images text-2xl group-hover:scale-110 transition-transform"></i> 사진 모두 지우기
+                </button>
+                <button onclick="executeReset()" class="py-4 px-2 bg-red-500 text-white font-bold rounded-2xl hover:bg-red-600 transition-all shadow-sm hover:shadow-md flex flex-col items-center justify-center gap-2 text-sm md:text-base group">
+                    <i class="fas fa-trash-alt text-2xl group-hover:scale-110 transition-transform"></i> 전부 지우기
+                </button>
+                <button onclick="startSelectiveDelete()" class="py-4 px-2 bg-yellow-400 text-yellow-900 font-bold rounded-2xl hover:bg-yellow-500 transition-all shadow-sm hover:shadow-md flex flex-col items-center justify-center gap-2 text-sm md:text-base group">
+                    <i class="fas fa-hand-pointer text-2xl group-hover:scale-110 transition-transform"></i> 골라서 지우기
+                </button>
+            </div>
+            
+            <button onclick="closeResetModal()" class="w-full py-3.5 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition-colors text-base">
+                취소
+            </button>
+        </div>
+    </div>
+
+    <div id="toast-container" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-[200] flex flex-col gap-2 items-center pointer-events-none no-capture w-full max-w-xs md:max-w-md px-4"></div>
+
+    <script>
+        let bubbleCount = 0;
+
+        // Deselect bubbles and panels when clicking outside
+        document.addEventListener('pointerdown', (e) => {
+            if (document.body.classList.contains('delete-mode')) return;
+            if (!e.target.closest('.speech-bubble') && !e.target.closest('.panel-container') && !e.target.closest('header')) {
+                document.querySelectorAll('.speech-bubble').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.panel-container').forEach(p => p.classList.remove('active'));
+            }
+        });
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            let bgClass = 'bg-blue-600';
+            let icon = '<i class="fas fa-info-circle mr-2"></i>';
+            if(type === 'error') { bgClass = 'bg-red-500'; icon = '<i class="fas fa-exclamation-triangle mr-2"></i>'; }
+            if(type === 'success') { bgClass = 'bg-green-500'; icon = '<i class="fas fa-check-circle mr-2"></i>'; }
+
+            toast.className = `${bgClass} text-white px-5 py-3 rounded-full shadow-xl font-bold flex items-center transition-all duration-300 transform -translate-y-10 opacity-0 pointer-events-auto text-sm md:text-base w-full justify-center`;
+            toast.innerHTML = `${icon} ${message}`;
+            
+            container.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.remove('-translate-y-10', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('-translate-y-10', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        let activePanelId = 'panel-1';
+        let cameraStream = null;
+
+        function handlePanelClick(id) { 
+            if (document.body.classList.contains('delete-mode')) return;
+
+            const panel = document.getElementById(id);
+            
+            if(panel.classList.contains('has-image')) {
+                document.querySelectorAll('.panel-container').forEach(p => { if (p !== panel) p.classList.remove('active'); });
+                document.querySelectorAll('.speech-bubble').forEach(b => b.classList.remove('active'));
+                panel.classList.toggle('active');
+                return;
+            }
+            
+            activePanelId = id;
+            const panelNum = id.split('-')[1];
+            document.getElementById('source-modal-title').innerText = `${panelNum}컷에 어떻게 사진을 넣을까요?`;
+            showSourceModal();
+        }
+
+        function showSourceModal() {
+            const modal = document.getElementById('source-modal');
+            const content = document.getElementById('source-modal-content');
+            modal.classList.remove('hidden');
+            requestAnimationFrame(() => {
+                modal.classList.remove('opacity-0');
+                content.classList.remove('scale-95');
+            });
+        }
+
+        function closeSourceModal() {
+            const modal = document.getElementById('source-modal');
+            const content = document.getElementById('source-modal-content');
+            modal.classList.add('opacity-0');
+            content.classList.add('scale-95');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        }
+
+        function triggerUpload() {
+            closeSourceModal();
+            const panelNum = activePanelId.split('-')[1];
+            document.getElementById('file-' + panelNum).click(); 
+        }
+
+        async function openCamera() {
+            closeSourceModal();
+            const cameraModal = document.getElementById('camera-modal');
+            const video = document.getElementById('camera-preview');
+            const countdownEl = document.getElementById('countdown-display');
+            
+            cameraModal.classList.remove('hidden');
+            countdownEl.classList.add('hidden'); 
+
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' }, 
+                    audio: false 
+                });
+                video.srcObject = cameraStream;
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    startCountdown();
+                };
+            } catch (err) {
+                console.error("Camera access failed:", err);
+                showToast('카메라 접근 권한이 없거나 지원하지 않는 기기입니다.', 'error');
+                closeCamera();
+            }
+        }
+
+        function startCountdown() {
+            const countdownEl = document.getElementById('countdown-display');
+            let count = 5;
+            
+            countdownEl.innerText = count;
+            countdownEl.classList.remove('hidden');
+            
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownEl.innerText = count;
+                    countdownEl.style.transform = 'scale(1.2)';
+                    setTimeout(() => countdownEl.style.transform = 'scale(1)', 200);
+                } else {
+                    clearInterval(timer);
+                    countdownEl.innerText = "찰칵!";
+                    setTimeout(() => takeSnapshot(), 300); 
+                }
+            }, 1000);
+        }
+
+        function takeSnapshot() {
+            const video = document.getElementById('camera-preview');
+            const canvas = document.createElement('canvas');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const dataUrl = canvas.toDataURL('image/png');
+            applyImageToPanel(activePanelId, dataUrl);
+            closeCamera();
+        }
+
+        function closeCamera() {
+            document.getElementById('camera-modal').classList.add('hidden');
+            document.getElementById('countdown-display').classList.add('hidden');
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+        }
+
+        function applyImageToPanel(panelId, dataUrl) {
+            const panel = document.getElementById(panelId);
+            panel.style.backgroundImage = `url('${dataUrl}')`;
+            panel.classList.add('has-image');
+            panel.innerHTML = `
+                <div class="panel-delete" onclick="event.stopPropagation(); clearPanel('${panelId}')">
+                    <i class="fas fa-trash-alt"></i>
+                </div>`;
+        }
+
+        function clearPanel(panelId) {
+            const panel = document.getElementById(panelId);
+            const panelNum = panelId.split('-')[1];
+            panel.style.backgroundImage = '';
+            panel.classList.remove('has-image', 'active');
+            panel.innerHTML = `
+                <div class="flex flex-col items-center justify-center text-gray-300 group-hover:text-blue-300 transition-colors">
+                    <i class="fas fa-plus-circle text-4xl md:text-6xl mb-2 md:mb-3"></i>
+                    <p class="font-bold text-base md:text-xl title-font">${panelNum}컷 추가</p>
+                </div>`;
+            document.getElementById('file-' + panelNum).value = '';
+        }
+
+        function loadImage(event, panelId) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    applyImageToPanel(panelId, e.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        const resetModal = document.getElementById('reset-modal');
+        const resetModalContent = document.getElementById('reset-modal-content');
+
+        function showResetModal() {
+            resetModal.classList.remove('hidden');
+            requestAnimationFrame(() => {
+                resetModal.classList.remove('opacity-0');
+                resetModalContent.classList.remove('scale-95');
+            });
+        }
+
+        function closeResetModal() {
+            resetModal.classList.add('opacity-0');
+            resetModalContent.classList.add('scale-95');
+            setTimeout(() => {
+                resetModal.classList.add('hidden');
+            }, 300);
+        }
+
+        function startSelectiveDelete() {
+            closeResetModal();
+            document.body.classList.add('delete-mode');
+            document.getElementById('normal-header-buttons').classList.add('hidden');
+            document.getElementById('delete-mode-header-buttons').classList.remove('hidden');
+        }
+
+        function endSelectiveDelete() {
+            document.body.classList.remove('delete-mode');
+            document.getElementById('normal-header-buttons').classList.remove('hidden');
+            document.getElementById('delete-mode-header-buttons').classList.add('hidden');
+            document.querySelectorAll('.speech-bubble, .panel-container').forEach(el => el.classList.remove('active'));
+        }
+
+        function clearBubblesOnly() {
+            document.querySelectorAll('.speech-bubble').forEach(b => b.remove());
+            bubbleCount = 0;
+            closeResetModal();
+            endSelectiveDelete();
+            showToast('말풍선이 모두 지워졌어요.', 'success');
+        }
+
+        function clearPanelsOnly() {
+            for(let i=1; i<=4; i++) {
+                clearPanel('panel-' + i);
+            }
+            closeResetModal();
+            endSelectiveDelete();
+            showToast('사진이 모두 지워졌어요.', 'success');
+        }
+
+        function executeReset() {
+            document.querySelectorAll('.speech-bubble').forEach(b => b.remove());
+            bubbleCount = 0;
+            for(let i=1; i<=4; i++) {
+                clearPanel('panel-' + i);
+            }
+            closeResetModal();
+            endSelectiveDelete();
+            showToast('새로운 이야기를 만들어봐요!', 'success');
+        }
+
+        async function saveAsImage(btn) {
+            const wasInDeleteMode = document.body.classList.contains('delete-mode');
+            if (wasInDeleteMode) endSelectiveDelete();
+            
+            document.querySelectorAll('.speech-bubble, .panel-container').forEach(el => el.classList.remove('active'));
+
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>저장중...';
+            btn.disabled = true;
+
+            try {
+                const canvas = await html2canvas(document.querySelector("#capture-area"), { 
+                    useCORS: true, 
+                    logging: false, 
+                    allowTaint: true,
+                    scale: 2, 
+                    backgroundColor: '#fefcf5',
+                    ignoreElements: (element) => element.classList.contains('no-capture')
+                });
+                
+                const link = document.createElement('a');
+                link.download = '우리들의_이야기.png';
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+                showToast('이야기가 성공적으로 저장되었습니다!', 'success');
+            } catch (err) {
+                console.error("Save failed:", err);
+                showToast('저장 중 오류가 발생했습니다.', 'error');
+            } finally {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+            }
+        }
+
+        function addGlobalBubble() {
+            const bubble = document.createElement('div');
+            bubble.className = 'speech-bubble';
+            
+            const grid = document.getElementById('panel-grid');
+            let x = window.innerWidth / 2 - 80;
+            let y = window.innerHeight / 2 - 40;
+            
+            if (grid) {
+                const gridRect = grid.getBoundingClientRect();
+                x = gridRect.left + gridRect.width / 2 - 80; 
+                y = gridRect.top + gridRect.height / 2 - 40;
+            }
+            
+            const offset = (bubbleCount % 6) * 20;
+            bubble.style.left = `${Math.max(20, x + offset)}px`;
+            bubble.style.top = `${Math.max(80, y + offset)}px`;
+            bubbleCount++;
+            
+            const textDiv = document.createElement('div');
+            textDiv.className = 'bubble-text';
+            textDiv.contentEditable = "true";
+            textDiv.innerText = "이야기를 적어보세요";
+            
+            textDiv.addEventListener('focus', function() {
+                if(this.innerText === "이야기를 적어보세요") this.innerText = "";
+            });
+            textDiv.addEventListener('blur', function() {
+                if(this.innerText.trim() === "") this.innerText = "이야기를 적어보세요";
+            });
+
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'bubble-status';
+            bubble.statusDiv = statusDiv;
+
+            const delBtn = document.createElement('div');
+            delBtn.className = 'bubble-action-btn bubble-delete';
+            delBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+            delBtn.onclick = (e) => { e.stopPropagation(); bubble.remove(); };
+            
+            bubble.appendChild(delBtn);
+            bubble.appendChild(statusDiv);
+            bubble.appendChild(textDiv);
+            document.body.appendChild(bubble);
+            
+            document.querySelectorAll('.speech-bubble').forEach(b => b.classList.remove('active'));
+            bubble.classList.add('active');
+
+            makeDraggable(bubble);
+
+            bubble.addEventListener('click', (e) => {
+                if (document.body.classList.contains('delete-mode')) return;
+                if (e.target.closest('.bubble-action-btn')) return;
+
+                if (bubble.isRecording && bubble.speechRecognition) {
+                    bubble.speechRecognition.stop();
+                    bubble.statusDiv.innerText = '⏸️ 클릭해서 계속 말하기';
+                } else if (!bubble.isRecording && bubble.speechRecognition) {
+                    try { bubble.speechRecognition.start(); } catch(err) { console.error(err); }
+                }
+            });
+
+            startSpeechRecognition(bubble, textDiv);
+        }
+
+        function startSpeechRecognition(bubble, target) {
+            if (document.body.classList.contains('delete-mode')) return;
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                showToast('이 브라우저에서는 음성 인식을 지원하지 않습니다. 키보드로 입력해주세요.', 'error');
+                target.focus();
+                return;
+            }
+            
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'ko-KR';
+            recognition.interimResults = true;
+            recognition.continuous = true; 
+            
+            bubble.speechRecognition = recognition; 
+
+            recognition.onstart = () => {
+                bubble.classList.add('recording');
+                bubble.isRecording = true;
+                bubble.statusDiv.innerText = '🎙️ 듣고 있어요 (클릭 시 멈춤)';
+                if (target.innerText === "이야기를 적어보세요") {
+                    target.innerText = "";
+                    bubble.initialText = "";
+                } else {
+                    bubble.initialText = target.innerText + " "; 
+                }
+            };
+            
+            recognition.onend = () => {
+                bubble.classList.remove('recording');
+                bubble.isRecording = false;
+                if (!target.innerText.trim()) target.innerText = "이야기를 적어보세요";
+                if (bubble.classList.contains('active')) {
+                    bubble.statusDiv.innerText = '⏸️ 클릭해서 계속 말하기';
+                }
+            };
+            
+            recognition.onresult = (e) => {
+                let transcript = '';
+                for (let i = 0; i < e.results.length; ++i) {
+                    transcript += e.results[i][0].transcript;
+                }
+                target.innerText = (bubble.initialText || "") + transcript;
+                
+                const selection = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(target);
+                range.collapse(false);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            };
+
+            recognition.onerror = (e) => {
+                bubble.classList.remove('recording');
+                bubble.isRecording = false;
+            };
+
+            try { recognition.start(); } 
+            catch(e) { console.error(e); }
+        }
+
+        function makeDraggable(el) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            
+            el.addEventListener('pointerdown', dragStart);
+
+            function dragStart(e) {
+                if (document.body.classList.contains('delete-mode')) return;
+                if (e.target.closest('.bubble-action-btn')) return;
+                
+                document.querySelectorAll('.speech-bubble').forEach(b => { if (b !== el) b.classList.remove('active'); });
+                document.querySelectorAll('.panel-container').forEach(p => p.classList.remove('active'));
+                el.classList.add('active');
+
+                if (e.target.closest('.bubble-text')) {
+                    return; 
+                }
+
+                e.preventDefault(); 
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+
+                el.setPointerCapture(e.pointerId);
+                el.addEventListener('pointermove', elementDrag);
+                el.addEventListener('pointerup', closeDragElement);
+            }
+
+            function elementDrag(e) {
+                e.preventDefault();
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+
+                let newTop = el.offsetTop - pos2;
+                let newLeft = el.offsetLeft - pos1;
+
+                const maxLeft = window.innerWidth - el.offsetWidth;
+                const maxTop = window.innerHeight - el.offsetHeight;
+                
+                if (newLeft < 0) newLeft = 0;
+                if (newTop < 0) newTop = 0;
+                if (newLeft > maxLeft) newLeft = maxLeft;
+                if (newTop > maxTop) newTop = maxTop;
+
+                el.style.top = newTop + "px";
+                el.style.left = newLeft + "px";
+            }
+
+            function closeDragElement(e) {
+                el.releasePointerCapture(e.pointerId);
+                el.removeEventListener('pointermove', elementDrag);
+                el.removeEventListener('pointerup', closeDragElement);
+            }
+        }
+    </script>
+</body>
+</html>
